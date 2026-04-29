@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="800" viewBox="0 0 1920 800">
+  <defs>
+    <filter id="cloud-blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8"/>
+    </filter>
+  </defs>
+  
+  <!-- Back layer clouds - slower, further away -->
+  <g filter="url(#cloud-blur)" opacity="0.5">
+    <!-- Cloud 1 -->
+    <path d="M200 120 Q230 80 280 90 Q320 70 360 95 Q400 85 440 100 Q470 90 500 110 L200 120" fill="#ffffff" opacity="0.6"/>
+    <path d="M180 140 Q220 130 280 145 Q340 135 400 150 Q450 145 500 160 L180 140" fill="#ffffff" opacity="0.5"/>
+    
+    <!-- Cloud 2 -->
+    <path d="M700 80 Q740 50 790 65 Q840 45 890 70 Q930 55 970 80 L700 80" fill="#ffffff" opacity="0.5"/>
+    <path d="M680 105 Q730 90 790 105 Q850 95 910 110 Q960 100 1000 120 L680 105" fill="#ffffff" opacity="0.4"/>
+    
+    <!-- Cloud 3 -->
+    <path d="M1200 100 Q1240 70 1290 85 Q1340 65 1390 90 Q1430 75 1470 100 L1200 100" fill="#ffffff" opacity="0.5"/>
+    <path d="M1180 125 Q1230 110 1290 125 Q1350 115 1410 130 Q1460 120 1500 140 L1180 125" fill="#ffffff" opacity="0.4"/>
+    
+    <!-- Cloud 4 -->
+    <path d="M1650 150 Q1690 120 1740 135 Q1790 115 1840 140 Q1880 125 1920 150 L1650 150" fill="#ffffff" opacity="0.5"/>
+  </g>
+  
+  <!-- Mid layer clouds -->
+  <g opacity="0.7">
+    <!-- Cloud 5 -->
+    <path d="M100 200 Q150 160 210 180 Q260 150 320 185 Q370 165 420 200 L100 200" fill="#ffffff" opacity="0.7"/>
+    <path d="M80 230 Q130 210 190 230 Q250 210 310 235 Q360 220 400 250 L80 230" fill="#ffffff" opacity="0.6"/>
+    
+    <!-- Cloud 6 -->
+    <path d="M900 180 Q950 140 1010 160 Q1060 130 1120 165 Q1170 145 1220 180 L900 180" fill="#ffffff" opacity="0.6"/>
+    
+    <!-- Cloud 7 -->
+    <path d="M1400 220 Q1450 180 1510 200 Q1560 170 1620 205 Q1670 185 1720 220 L1400 220" fill="#ffffff" opacity="0.6"/>
+  </g>
+</svg>

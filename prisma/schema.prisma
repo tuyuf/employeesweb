@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Employee {
+  emp_no        Int              @id(map: "idx_16400_primary")
+  birth_date    DateTime         @db.Date
+  first_name    String           @db.VarChar(14)
+  last_name     String           @db.VarChar(16)
+  gender        employees_gender
+  hire_date     DateTime         @db.Date
+  dept_emps     DeptEmp[]
+  dept_managers DeptManager[]
+  salaries      Salary[]
+  titles        Title[]
+
+  @@index([hire_date, emp_no])
+  @@index([first_name])
+  @@index([last_name])
+  @@map("employees")
+}
+
+model Department {
+  dept_no       String        @id(map: "idx_16391_primary") @db.Char(4)
+  dept_name     String        @unique(map: "idx_16391_dept_name") @db.VarChar(40)
+  dept_emps     DeptEmp[]
+  dept_managers DeptManager[]
+
+  @@map("departments")
+}
+
+model DeptEmp {
+  emp_no     Int
+  dept_no    String     @db.Char(4)
+  from_date  DateTime   @db.Date
+  to_date    DateTime   @db.Date
+  employee   Employee   @relation(fields: [emp_no], references: [emp_no], onDelete: Cascade, onUpdate: NoAction, map: "dept_emp_ibfk_1")
+  department Department @relation(fields: [dept_no], references: [dept_no], onDelete: Cascade, onUpdate: NoAction, map: "dept_emp_ibfk_2")
+
+  @@id([emp_no, dept_no], map: "idx_16394_primary")
+  @@index([dept_no], map: "idx_16394_dept_no")
+  @@index([dept_no, to_date, emp_no])
+  @@index([emp_no, from_date])
+  @@map("dept_emp")
+}
+
+model DeptManager {
+  emp_no     Int
+  dept_no    String     @db.Char(4)
+  from_date  DateTime   @db.Date
+  to_date    DateTime   @db.Date
+  employee   Employee   @relation(fields: [emp_no], references: [emp_no], onDelete: Cascade, onUpdate: NoAction, map: "dept_manager_ibfk_1")
+  department Department @relation(fields: [dept_no], references: [dept_no], onDelete: Cascade, onUpdate: NoAction, map: "dept_manager_ibfk_2")
+
+  @@id([emp_no, dept_no], map: "idx_16397_primary")
+  @@index([dept_no], map: "idx_16397_dept_no")
+  @@index([dept_no, from_date])
+  @@map("dept_manager")
+}
+
+model Salary {
+  emp_no    Int
+  salary    Int
+  from_date DateTime @db.Date
+  to_date   DateTime @db.Date
+  employee  Employee @relation(fields: [emp_no], references: [emp_no], onDelete: Cascade, onUpdate: NoAction, map: "salaries_ibfk_1")
+
+  @@id([emp_no, from_date], map: "idx_16403_primary")
+  @@map("salaries")
+}
+
+model Title {
+  emp_no    Int
+  title     String    @db.VarChar(50)
+  from_date DateTime  @db.Date
+  to_date   DateTime? @db.Date
+  employee  Employee  @relation(fields: [emp_no], references: [emp_no], onDelete: Cascade, onUpdate: NoAction, map: "titles_ibfk_1")
+
+  @@id([emp_no, title, from_date], map: "idx_16406_primary")
+  @@map("titles")
+}
+
+enum employees_gender {
+  M
+  F
+}

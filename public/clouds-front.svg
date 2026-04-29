@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="800" viewBox="0 0 1920 800">
+  <defs>
+    <filter id="cloud-blur-soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
+    </filter>
+  </defs>
+  
+  <!-- Front layer clouds - faster parallax, bigger, closer -->
+  <g filter="url(#cloud-blur-soft)">
+    <!-- Big Cloud 1 - left side -->
+    <path d="M50 350 Q100 290 170 320 Q220 280 290 325 Q350 295 410 345 L50 350" fill="#ffffff"/>
+    <path d="M30 390 Q90 350 160 375 Q220 340 280 370 Q340 345 390 385 L30 390" fill="#ffffff" opacity="0.85"/>
+    <path d="M20 420 Q80 390 150 415 Q210 385 270 410 Q320 390 370 425 L20 420" fill="#ffffff" opacity="0.7"/>
+    
+    <!-- Big Cloud 2 - center-right -->
+    <path d="M600 280 Q660 220 740 255 Q800 210 880 260 Q940 225 1000 280 L600 280" fill="#ffffff"/>
+    <path d="M580 320 Q650 280 730 315 Q800 270 870 315 Q930 285 980 330 L580 320" fill="#ffffff" opacity="0.85"/>
+    <path d="M570 355 Q640 320 720 350 Q790 310 860 355 Q920 330 970 375 L570 355" fill="#ffffff" opacity="0.7"/>
+    
+    <!-- Big Cloud 3 - right side -->
+    <path d="M1200 320 Q1260 260 1340 295 Q1400 250 1480 300 Q1540 265 1600 320 L1200 320" fill="#ffffff"/>
+    <path d="M1180 360 Q1250 320 1330 355 Q1400 310 1470 355 Q1530 330 1580 380 L1180 360" fill="#ffffff" opacity="0.85"/>
+    <path d="M1170 395 Q1240 360 1320 390 Q1390 350 1460 395 Q1520 370 1570 415 L1170 395" fill="#ffffff" opacity="0.7"/>
+    
+    <!-- Big Cloud 4 - bottom left -->
+    <path d="M150 550 Q210 490 290 530 Q360 480 440 535 Q510 490 570 550 L150 550" fill="#ffffff"/>
+    <path d="M130 595 Q200 550 280 590 Q360 540 430 590 Q490 555 545 605 L130 595" fill="#ffffff" opacity="0.85"/>
+    <path d="M120 630 Q190 590 270 630 Q350 585 420 630 Q480 600 530 645 L120 630" fill="#ffffff" opacity="0.7"/>
+    
+    <!-- Big Cloud 5 - bottom right -->
+    <path d="M1400 480 Q1460 420 1540 460 Q1600 410 1680 465 Q1740 425 1800 480 L1400 480" fill="#ffffff"/>
+    <path d="M1380 525 Q1450 480 1530 520 Q1600 470 1670 525 Q1730 490 1780 535 L1380 525" fill="#ffffff" opacity="0.85"/>
+    <path d="M1370 560 Q1440 520 1520 555 Q1590 510 1660 560 Q1720 530 1770 575 L1370 560" fill="#ffffff" opacity="0.7"/>
+  </g>
+</svg>
