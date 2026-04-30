@@ -7,6 +7,7 @@ import {
   Users,
   Building2,
   BarChart3,
+  History,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,7 @@ export default function Sidebar() {
     { href: '/employees', label: 'Employees', icon: Users },
     { href: '/departments', label: 'Departments', icon: Building2 },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { href: '/history', label: 'History', icon: History },
   ];
 
   return (
@@ -35,7 +37,7 @@ export default function Sidebar() {
             className="text-2xl tracking-tight"
             style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontWeight: 700 }}
           >
-            Skillset
+            EmployeesWeb
           </span>
         </Link>
       </div>

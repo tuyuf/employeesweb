@@ -37,6 +37,7 @@ export default function EmployeeTable({ employees }: EmployeeTableProps) {
             <TableHead className="w-[100px] h-14 pl-8 text-[12px] uppercase tracking-wide text-muted-foreground">ID</TableHead>
             <TableHead className="h-14 text-[12px] uppercase tracking-wide text-muted-foreground">Full Name</TableHead>
             <TableHead className="h-14 text-[12px] uppercase tracking-wide text-muted-foreground">Department</TableHead>
+            <TableHead className="h-14 text-[12px] uppercase tracking-wide text-muted-foreground text-center">Gender</TableHead>
             <TableHead className="h-14 text-[12px] uppercase tracking-wide text-muted-foreground text-right">Compensation</TableHead>
             <TableHead className="h-14 text-[12px] uppercase tracking-wide text-muted-foreground pr-8">Joined</TableHead>
             <TableHead className="w-[100px]" />
@@ -60,18 +61,23 @@ export default function EmployeeTable({ employees }: EmployeeTableProps) {
                   <span className="text-muted-foreground italic text-[11px]">Unassigned</span>
                 )}
               </TableCell>
+              <TableCell className="py-6 text-center">
+                <span className="inline-flex items-center justify-center w-14 h-6 rounded-md text-[11px] font-medium bg-muted text-muted-foreground">
+                  {emp.gender === 'M' ? 'Male' : 'Female'}
+                </span>
+              </TableCell>
               <TableCell className="py-6 text-right text-[14px] text-foreground">
                 {emp.current_salary ? formatCurrency(emp.current_salary) : '—'}
               </TableCell>
               <TableCell className="py-6 text-muted-foreground text-[12px] pr-8">
                 {formatDate(emp.hire_date)}
               </TableCell>
-              <TableCell className="pr-6 opacity-0 group-hover:opacity-100 transition-opacity">
+              <TableCell className="pr-6">
                 <Link
                   href={`/employees/${emp.emp_no}`}
-                  className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), "rounded-full px-4 h-8 text-[11px] font-medium hover:bg-accent/10 hover:text-accent")}
+                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), "rounded-full px-4 h-8 text-[11px] font-medium border-border")}
                 >
-                  View Profile
+                  View Detail
                 </Link>
               </TableCell>
             </TableRow>

@@ -9,6 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const cursor = searchParams.get('cursor');
+    const pageParam = searchParams.get('page');
     const size = Math.min(parseInt(searchParams.get('size') || '20'), 100);
     const search = searchParams.get('search') || '';
     const department = searchParams.get('department') || '';
@@ -30,15 +31,23 @@ export async function GET(request: NextRequest) {
 
     const escapedSearch = escapeSearchInput(search);
 
+    const usePage = !!pageParam;
+    const page = usePage ? Math.max(1, parseInt(pageParam!)) : 1;
+    const offset = usePage ? (page - 1) * size : 0;
+
     let cursorCondition = '';
     let cursorParams: (string | number)[] = [];
-    if (cursor) {
+    let limitClause = `LIMIT ${size}`;
+
+    if (usePage) {
+      limitClause = `LIMIT ${size} OFFSET ${offset}`;
+    } else if (cursor) {
       const [cursorHireDate, cursorEmpNo] = cursor.split('_');
       if (cursorHireDate && cursorEmpNo) {
         if (isDesc) {
-          cursorCondition = `AND (e.hire_date < $1 OR (e.hire_date = $1 AND e.emp_no < $2::int))`;
+          cursorCondition = `AND (e.hire_date < $1::date OR (e.hire_date = $1::date AND e.emp_no < $2::int))`;
         } else {
-          cursorCondition = `AND (e.hire_date > $1 OR (e.hire_date = $1 AND e.emp_no > $2::int))`;
+          cursorCondition = `AND (e.hire_date > $1::date OR (e.hire_date = $1::date AND e.emp_no > $2::int))`;
         }
         cursorParams = [cursorHireDate, cursorEmpNo];
       }
@@ -52,6 +61,10 @@ export async function GET(request: NextRequest) {
       ? `AND d.dept_name = $${cursorParams.length + (escapedSearch ? 2 : 1)}`
       : '';
 
+    const deptExistsCondition = department
+      ? `AND EXISTS (SELECT 1 FROM dept_emp de JOIN departments d2 ON d2.dept_no = de.dept_no WHERE de.emp_no = e.emp_no AND de.to_date = '9999-01-01'::date AND d2.dept_name = $${cursorParams.length + (escapedSearch ? 2 : 1)})`
+      : '';
+
     const searchParam = escapedSearch || null;
     const deptParam = department || null;
 
@@ -59,38 +72,11 @@ export async function GET(request: NextRequest) {
     if (searchParam) baseParams.push(searchParam);
     if (deptParam) baseParams.push(deptParam);
 
-    console.log('=== FILTER DEBUG ===');
-    console.log('department:', department);
-    console.log('search:', escapedSearch);
-    console.log('deptCondition:', deptCondition);
-    console.log('searchCondition:', searchCondition);
-    console.log('baseParams:', baseParams);
-    console.log('===================');
-
     const countResult = await prisma.$queryRawUnsafe<[{ count: number }]>(
       `
-      WITH latest_dept_emp AS (
-        SELECT emp_no, dept_no, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM dept_emp
-      ),
-      latest_salaries AS (
-        SELECT emp_no, salary, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM salaries
-      ),
-      latest_titles AS (
-        SELECT emp_no, title, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM titles
-      )
-      SELECT COUNT(DISTINCT e.emp_no)::int AS count
+      SELECT COUNT(*)::int AS count
       FROM employees e
-      LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
-      LEFT JOIN departments d ON lde.dept_no = d.dept_no
-      LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
-      LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
-      WHERE 1=1 ${cursorCondition} ${searchCondition} ${deptCondition}
+      WHERE 1=1 ${cursorCondition} ${searchCondition} ${deptExistsCondition}
     `,
       ...baseParams
     );
@@ -139,13 +125,14 @@ export async function GET(request: NextRequest) {
       LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
       WHERE 1=1 ${cursorCondition} ${searchCondition} ${deptCondition}
       ORDER BY ${orderCol} ${orderDir}
-      LIMIT ${size}
+      ${limitClause}
     `,
       ...baseParams
     );
 
+    const totalPages = Math.max(1, Math.ceil(total / size));
     let nextCursor: string | null = null;
-    if (employees.length === size && total > size) {
+    if (!usePage && employees.length === size && total > size) {
       const last = employees[employees.length - 1];
       nextCursor = `${last.hire_date}_${last.emp_no}`;
     }
@@ -153,6 +140,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: employees,
       pagination: {
+        page: usePage ? page : undefined,
+        totalPages: usePage ? totalPages : undefined,
+        totalItems: total,
         nextCursor,
         hasMore: employees.length === size,
         pageSize: size,
