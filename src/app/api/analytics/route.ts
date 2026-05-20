@@ -8,11 +8,11 @@ export async function GET() {
         WITH latest_salary AS (
           SELECT emp_no, salary, from_date,
                  ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-          FROM employees_temp.salaries
+          FROM salaries
         )
         SELECT 
-          (SELECT COUNT(*) FROM employees_temp.employees)::int AS total_employees,
-          (SELECT COUNT(*) FROM employees_temp.departments)::int AS total_departments,
+          (SELECT COUNT(*) FROM employees)::int AS total_employees,
+          (SELECT COUNT(*) FROM departments)::int AS total_departments,
           ROUND(AVG(ls.salary))::int AS avg_salary,
           SUM(ls.salary)::bigint::text AS total_payroll
         FROM latest_salary ls WHERE ls.rn = 1
@@ -22,17 +22,17 @@ export async function GET() {
         WITH latest_dept_emp AS (
           SELECT emp_no, dept_no, from_date,
                  ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-          FROM employees_temp.dept_emp
+          FROM dept_emp
         ),
         latest_salary AS (
           SELECT emp_no, salary, from_date,
                  ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-          FROM employees_temp.salaries
+          FROM salaries
         ),
         latest_title AS (
           SELECT emp_no, title, from_date,
                  ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-          FROM employees_temp.titles
+          FROM titles
         )
         SELECT 
           d.dept_name,
@@ -43,7 +43,7 @@ export async function GET() {
           0::int AS title_count,
           0::int AS avg_salary
         FROM latest_dept_emp de
-        JOIN employees_temp.departments d ON de.dept_no = d.dept_no AND de.rn = 1
+        JOIN departments d ON de.dept_no = d.dept_no AND de.rn = 1
         GROUP BY d.dept_name
         UNION ALL
         SELECT 
@@ -82,7 +82,7 @@ export async function GET() {
 
       prisma.$queryRaw<{ year: number; hires: number }[]>`
         SELECT EXTRACT(YEAR FROM hire_date)::int AS year, COUNT(*)::int AS hires
-        FROM employees_temp.employees
+        FROM employees
         GROUP BY year
         ORDER BY year
       `,
@@ -91,7 +91,7 @@ export async function GET() {
         SELECT
           CASE WHEN gender = 'M' THEN 'Male' ELSE 'Female' END AS gender,
           COUNT(*)::int AS count
-        FROM employees_temp.employees
+        FROM employees
         GROUP BY gender
       `
     ]);

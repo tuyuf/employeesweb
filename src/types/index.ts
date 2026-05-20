@@ -117,3 +117,34 @@ export interface GenderDistribution {
   gender: string;
   count: number;
 }
+
+// Final Project Types
+
+export interface ManagerProfile {
+  manager_emp_no: number;
+  manager_first_name: string;
+  manager_last_name: string;
+  manager_full_name: string;
+  dept_no: string;
+  department_name: string;
+  tenure_start_date: string;
+  tenure_end_date: string;
+  manager_status: string;
+  tenure_days: number | null;
+}
+
+export interface ExplainResult {
+  query: string;
+  plan: string[];
+  indexUsed: boolean;
+  scanType: string;
+}
+
+export interface SearchResult {
+  emp_no: number;
+  first_name: string;
+  last_name: string;
+  gender: string;
+  birth_date: string;
+  hire_date: string;
+}

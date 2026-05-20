@@ -1,0 +1,9 @@
+LOAD DATABASE
+     FROM mysql://root@localhost:3306/employees
+     INTO postgresql://riza@localhost:5432/employees_db
+
+WITH create no tables, create no indexes
+
+SET search_path to 'public'
+
+ALTER SCHEMA 'employees' RENAME TO 'public';

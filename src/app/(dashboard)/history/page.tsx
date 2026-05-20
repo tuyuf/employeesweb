@@ -10,6 +10,7 @@ import {
   ChevronLeft, ChevronRight, Clock,
 } from 'lucide-react';
 import Link from 'next/link';
+import { PaginationBar } from '@/components/ui/pagination-bar';
 
 interface HistoryRow {
   emp_no: number;
@@ -31,21 +32,20 @@ const CHANGE_TYPE_STYLES: Record<string, string> = {
 async function getHistoryData(page: number = 1) {
   const size = 20;
 
-  const [countResult] = await prisma.$queryRawUnsafe<[{ total: number }]>(
-    `SELECT (
+  const [countResult] = await prisma.$queryRaw<[{ total: number }]>`
+    SELECT (
       (SELECT COUNT(*) FROM titles) +
       (SELECT COUNT(*) FROM salaries) +
       (SELECT COUNT(*) FROM dept_emp) +
       (SELECT COUNT(*) FROM dept_manager)
-    )::int AS total`
-  );
+    )::int AS total
+  `;
   const total = countResult?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / size));
   const currentPage = Math.min(page, totalPages);
   const currentOffset = (currentPage - 1) * size;
 
-  const rows = await prisma.$queryRawUnsafe<HistoryRow[]>(
-    `
+  const rows = await prisma.$queryRaw<HistoryRow[]>`
     SELECT emp_no, first_name, last_name, from_date, value, change_type, dept_name FROM (
       SELECT e.emp_no, e.first_name, e.last_name, t.from_date::text,
              t.title AS value, 'Title Change' AS change_type,
@@ -93,91 +93,9 @@ async function getHistoryData(page: number = 1) {
     ) dm
     ORDER BY from_date DESC
     LIMIT ${size} OFFSET ${currentOffset}
-    `,
-  );
+  `;
 
   return { rows, total, totalPages, page: currentPage };
-}
-
-function PaginationBar({
-  currentPage,
-  totalPages,
-}: {
-  currentPage: number;
-  totalPages: number;
-}) {
-  if (totalPages <= 1) return null;
-
-  const pages: (number | 'ellipsis')[] = [];
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-  } else {
-    pages.push(1);
-    const start = Math.max(2, currentPage - 1);
-    const end = Math.min(totalPages - 1, currentPage + 1);
-    if (start > 2) pages.push('ellipsis');
-    for (let i = start; i <= end; i++) pages.push(i);
-    if (end < totalPages - 1) pages.push('ellipsis');
-    pages.push(totalPages);
-  }
-
-  return (
-    <div className="flex items-center justify-center gap-1 py-3">
-      {currentPage > 1 ? (
-        <Link
-          href={`/history?page=${currentPage - 1}`}
-          className={cn(
-            buttonVariants({ variant: 'outline', size: 'sm' }),
-            "h-8 w-8 p-0 rounded-md border-border"
-          )}
-        >
-          <ChevronLeft size={14} />
-        </Link>
-      ) : (
-        <span className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md text-muted-foreground cursor-not-allowed">
-          <ChevronLeft size={14} />
-        </span>
-      )}
-
-      {pages.map((p, i) =>
-        p === 'ellipsis' ? (
-          <span key={`e${i}`} className="h-8 w-5 inline-flex items-center justify-center text-xs text-muted-foreground">
-            ...
-          </span>
-        ) : (
-          <Link
-            key={p}
-            href={`/history?page=${p}`}
-            className={cn(
-              buttonVariants({ variant: p === currentPage ? 'default' : 'outline', size: 'sm' }),
-              "h-8 min-w-8 px-2 rounded-md",
-              p === currentPage
-                ? "bg-foreground text-background hover:bg-foreground/90"
-                : "border-border"
-            )}
-          >
-            <span className="text-xs font-medium">{p}</span>
-          </Link>
-        )
-      )}
-
-      {currentPage < totalPages ? (
-        <Link
-          href={`/history?page=${currentPage + 1}`}
-          className={cn(
-            buttonVariants({ variant: 'outline', size: 'sm' }),
-            "h-8 w-8 p-0 rounded-md border-border"
-          )}
-        >
-          <ChevronRight size={14} />
-        </Link>
-      ) : (
-        <span className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md text-muted-foreground cursor-not-allowed">
-          <ChevronRight size={14} />
-        </span>
-      )}
-    </div>
-  );
 }
 
 export default async function HistoryPage({
@@ -265,6 +183,7 @@ export default async function HistoryPage({
         <PaginationBar
           currentPage={page}
           totalPages={totalPages}
+          basePath="/history"
         />
       )}
     </div>

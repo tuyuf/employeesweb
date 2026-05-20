@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { departmentIdSchema, departmentEmployeesSchema } from '@/lib/validation';
 
 export async function GET(
   request: NextRequest,
@@ -7,12 +8,36 @@ export async function GET(
 ) {
   const { id } = await params;
   const { searchParams } = new URL(request.url);
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const size = Math.min(parseInt(searchParams.get('size') || '20'), 100);
+  
+  // Validate department ID
+  const idValidation = departmentIdSchema.safeParse({ id });
+  if (!idValidation.success) {
+    return NextResponse.json(
+      { error: 'Invalid department ID', details: idValidation.error.format() },
+      { status: 400 }
+    );
+  }
+  
+  const deptId = idValidation.data.id;
+  
+  // Validate query parameters
+  const queryValidation = departmentEmployeesSchema.safeParse({
+    page: searchParams.get('page') || undefined,
+    size: searchParams.get('size') || undefined,
+  });
+  
+  if (!queryValidation.success) {
+    return NextResponse.json(
+      { error: 'Invalid query parameters', details: queryValidation.error.format() },
+      { status: 400 }
+    );
+  }
+  
+  const { page, size } = queryValidation.data;
 
   try {
     const department = await prisma.department.findUnique({
-      where: { dept_no: id },
+      where: { dept_no: deptId },
       include: {
         dept_managers: {
           orderBy: { from_date: 'asc' },
@@ -29,8 +54,7 @@ export async function GET(
       return NextResponse.json({ error: 'Department not found' }, { status: 404 });
     }
 
-    const stats = await prisma.$queryRawUnsafe<[{ employee_count: number; avg_salary: number }]>(
-      `
+    const stats = await prisma.$queryRaw<[{ employee_count: number; avg_salary: number }]>`
       WITH latest_salaries AS (
         SELECT emp_no, salary,
                ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
@@ -41,17 +65,15 @@ export async function GET(
         COALESCE(AVG(ls.salary)::int, 0) AS avg_salary
       FROM dept_emp de
       LEFT JOIN latest_salaries ls ON ls.emp_no = de.emp_no AND ls.rn = 1
-      WHERE de.dept_no = $1 AND de.to_date = '9999-01-01'::date
-      `,
-      id
-    );
+      WHERE de.dept_no = ${deptId} AND de.to_date = '9999-01-01'::date
+    `;
 
     const { employee_count, avg_salary } = stats[0];
     const totalPages = Math.max(1, Math.ceil(employee_count / size));
     const currentPage = Math.min(page, totalPages);
     const offset = (currentPage - 1) * size;
 
-    const employees = await prisma.$queryRawUnsafe<
+    const employees = await prisma.$queryRaw<
       {
         emp_no: number;
         first_name: string;
@@ -62,8 +84,7 @@ export async function GET(
         current_salary: number | null;
         current_title: string | null;
       }[]
-    >(
-      `
+    >`
       WITH latest_salaries AS (
         SELECT emp_no, salary,
                ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
@@ -82,13 +103,11 @@ export async function GET(
       JOIN employees e ON e.emp_no = de.emp_no
       LEFT JOIN latest_salaries ls ON ls.emp_no = e.emp_no AND ls.rn = 1
       LEFT JOIN latest_titles lt ON lt.emp_no = e.emp_no AND lt.rn = 1
-      WHERE de.dept_no = $1 AND de.to_date = '9999-01-01'::date
+      WHERE de.dept_no = ${deptId} AND de.to_date = '9999-01-01'::date
       ORDER BY e.hire_date ASC, e.emp_no ASC
       OFFSET ${offset}
       LIMIT ${size}
-      `,
-      id
-    );
+    `;
 
     const currentManagerRecord = department.dept_managers.find(
       m => m.to_date.getFullYear() === 9999

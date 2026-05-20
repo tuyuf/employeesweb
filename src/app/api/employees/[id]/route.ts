@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
+import { employeeIdSchema } from '@/lib/validation';
 
 export async function GET(
   request: NextRequest,
@@ -7,12 +8,18 @@ export async function GET(
 ) {
   const { id } = await params;
   
+  // Validate ID with zod
+  const validationResult = employeeIdSchema.safeParse({ id });
+  if (!validationResult.success) {
+    return NextResponse.json(
+      { error: 'Invalid employee ID', details: validationResult.error.format() },
+      { status: 400 }
+    );
+  }
+  
+  const empNo = validationResult.data.id;
+  
   try {
-    const empNo = parseInt(id);
-    
-    if (isNaN(empNo)) {
-      return NextResponse.json({ error: 'Invalid employee ID' }, { status: 400 });
-    }
 
     const employee = await prisma.employee.findUnique({
       where: { emp_no: empNo },

@@ -1,21 +1,33 @@
 import { prisma } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
-
-function escapeSearchInput(input: string): string {
-  return input.replace(/[%_\\]/g, '\\$&');
-}
+import { escapeSearchInput } from '@/lib/sql-utils';
+import { employeeListSchema } from '@/lib/validation';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const cursor = searchParams.get('cursor');
-    const pageParam = searchParams.get('page');
-    const size = Math.min(parseInt(searchParams.get('size') || '20'), 100);
-    const search = searchParams.get('search') || '';
-    const department = searchParams.get('department') || '';
-    const sortBy = searchParams.get('sortBy') || 'emp_no';
-    const sortOrder = searchParams.get('sortOrder') || 'asc';
+    
+    // Validate input with zod
+    const validationResult = employeeListSchema.safeParse({
+      cursor: searchParams.get('cursor') || undefined,
+      page: searchParams.get('page') || undefined,
+      size: searchParams.get('size') || undefined,
+      search: searchParams.get('search') || undefined,
+      department: searchParams.get('department') || undefined,
+      sortBy: searchParams.get('sortBy') || undefined,
+      sortOrder: searchParams.get('sortOrder') || undefined,
+    });
 
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { error: 'Invalid query parameters', details: validationResult.error.format() },
+        { status: 400 }
+      );
+    }
+
+    const { cursor, page: pageParam, size, search, department, sortBy, sortOrder } = validationResult.data;
+
+    // Validate sortBy to prevent injection
     const validSorts: Record<string, string> = {
       emp_no: 'e.emp_no',
       first_name: 'e.first_name',
@@ -30,105 +42,300 @@ export async function GET(request: NextRequest) {
     const isDesc = sortOrder === 'desc';
 
     const escapedSearch = escapeSearchInput(search);
-
     const usePage = !!pageParam;
-    const page = usePage ? Math.max(1, parseInt(pageParam!)) : 1;
+    const page = usePage ? Math.max(1, pageParam) : 1;
     const offset = usePage ? (page - 1) * size : 0;
 
-    let cursorCondition = '';
-    let cursorParams: (string | number)[] = [];
-    let limitClause = `LIMIT ${size}`;
+    let employees;
+    let total = 0;
 
-    if (usePage) {
-      limitClause = `LIMIT ${size} OFFSET ${offset}`;
-    } else if (cursor) {
-      const [cursorHireDate, cursorEmpNo] = cursor.split('_');
+    // Determine which query to run based on parameters
+    const hasCursor = !usePage && cursor;
+    const hasSearch = escapedSearch.length > 0;
+    const hasDepartment = department.length > 0;
+
+    if (hasCursor && hasSearch && hasDepartment) {
+      const [cursorHireDate, cursorEmpNo] = cursor!.split('_');
       if (cursorHireDate && cursorEmpNo) {
-        if (isDesc) {
-          cursorCondition = `AND (e.hire_date < $1::date OR (e.hire_date = $1::date AND e.emp_no < $2::int))`;
-        } else {
-          cursorCondition = `AND (e.hire_date > $1::date OR (e.hire_date = $1::date AND e.emp_no > $2::int))`;
-        }
-        cursorParams = [cursorHireDate, cursorEmpNo];
+        // Cursor + search + department
+        const countResult = await prisma.$queryRaw<[{ count: number }]>`
+          SELECT COUNT(*)::int AS count
+          FROM employees e
+          WHERE EXISTS (
+            SELECT 1 FROM dept_emp de 
+            JOIN departments d2 ON d2.dept_no = de.dept_no 
+            WHERE de.emp_no = e.emp_no AND de.to_date = '9999-01-01'::date AND d2.dept_name = ${department}
+          )
+          AND (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+          AND (${isDesc} 
+            ? (e.hire_date < ${cursorHireDate}::date OR (e.hire_date = ${cursorHireDate}::date AND e.emp_no < ${parseInt(cursorEmpNo)}))
+            : (e.hire_date > ${cursorHireDate}::date OR (e.hire_date = ${cursorHireDate}::date AND e.emp_no > ${parseInt(cursorEmpNo)}))
+          )
+        `;
+        total = countResult[0]?.count || 0;
+
+        const empResult = await prisma.$queryRaw<{
+          emp_no: number;
+          first_name: string;
+          last_name: string;
+          gender: string;
+          birth_date: string;
+          hire_date: string;
+          current_department: string | null;
+          current_title: string | null;
+          current_salary: number | null;
+        }[]>`
+          WITH latest_dept_emp AS (
+            SELECT emp_no, dept_no, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM dept_emp
+          ),
+          latest_salaries AS (
+            SELECT emp_no, salary, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM salaries
+          ),
+          latest_titles AS (
+            SELECT emp_no, title, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM titles
+          )
+          SELECT
+            e.emp_no, e.first_name, e.last_name, e.gender::text,
+            e.birth_date::text, e.hire_date::text,
+            d.dept_name as current_department,
+            lt.title as current_title,
+            ls.salary::int as current_salary
+          FROM employees e
+          LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
+          LEFT JOIN departments d ON lde.dept_no = d.dept_no
+          LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
+          LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
+          WHERE d.dept_name = ${department}
+          AND (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+          AND (${isDesc}
+            ? (e.hire_date < ${cursorHireDate}::date OR (e.hire_date = ${cursorHireDate}::date AND e.emp_no < ${parseInt(cursorEmpNo)}))
+            : (e.hire_date > ${cursorHireDate}::date OR (e.hire_date = ${cursorHireDate}::date AND e.emp_no > ${parseInt(cursorEmpNo)}))
+          )
+          ORDER BY ${orderCol} ${orderDir}
+          LIMIT ${size}
+        `;
+        employees = empResult;
       }
     }
 
-    const searchCondition = escapedSearch
-      ? `AND (e.first_name ILIKE '%' || $${cursorParams.length + 1} || '%' OR e.last_name ILIKE '%' || $${cursorParams.length + 1} || '%' OR e.emp_no::text LIKE $${cursorParams.length + 1} || '%')`
-      : '';
+    // Fallback: pagination mode with various filter combinations
+    if (!employees) {
+      if (hasSearch && hasDepartment) {
+        const countResult = await prisma.$queryRaw<[{ count: number }]>`
+          SELECT COUNT(*)::int AS count
+          FROM employees e
+          WHERE EXISTS (
+            SELECT 1 FROM dept_emp de 
+            JOIN departments d2 ON d2.dept_no = de.dept_no 
+            WHERE de.emp_no = e.emp_no AND de.to_date = '9999-01-01'::date AND d2.dept_name = ${department}
+          )
+          AND (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+        `;
+        total = countResult[0]?.count || 0;
 
-    const deptCondition = department
-      ? `AND d.dept_name = $${cursorParams.length + (escapedSearch ? 2 : 1)}`
-      : '';
+        const empResult = await prisma.$queryRaw<{
+          emp_no: number;
+          first_name: string;
+          last_name: string;
+          gender: string;
+          birth_date: string;
+          hire_date: string;
+          current_department: string | null;
+          current_title: string | null;
+          current_salary: number | null;
+        }[]>`
+          WITH latest_dept_emp AS (
+            SELECT emp_no, dept_no, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM dept_emp
+          ),
+          latest_salaries AS (
+            SELECT emp_no, salary, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM salaries
+          ),
+          latest_titles AS (
+            SELECT emp_no, title, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM titles
+          )
+          SELECT
+            e.emp_no, e.first_name, e.last_name, e.gender::text,
+            e.birth_date::text, e.hire_date::text,
+            d.dept_name as current_department,
+            lt.title as current_title,
+            ls.salary::int as current_salary
+          FROM employees e
+          LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
+          LEFT JOIN departments d ON lde.dept_no = d.dept_no
+          LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
+          LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
+          WHERE d.dept_name = ${department}
+          AND (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+          ORDER BY ${orderCol} ${orderDir}
+          LIMIT ${size} OFFSET ${offset}
+        `;
+        employees = empResult;
+      } else if (hasSearch) {
+        const countResult = await prisma.$queryRaw<[{ count: number }]>`
+          SELECT COUNT(*)::int AS count
+          FROM employees e
+          WHERE (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+        `;
+        total = countResult[0]?.count || 0;
 
-    const deptExistsCondition = department
-      ? `AND EXISTS (SELECT 1 FROM dept_emp de JOIN departments d2 ON d2.dept_no = de.dept_no WHERE de.emp_no = e.emp_no AND de.to_date = '9999-01-01'::date AND d2.dept_name = $${cursorParams.length + (escapedSearch ? 2 : 1)})`
-      : '';
+        const empResult = await prisma.$queryRaw<{
+          emp_no: number;
+          first_name: string;
+          last_name: string;
+          gender: string;
+          birth_date: string;
+          hire_date: string;
+          current_department: string | null;
+          current_title: string | null;
+          current_salary: number | null;
+        }[]>`
+          WITH latest_dept_emp AS (
+            SELECT emp_no, dept_no, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM dept_emp
+          ),
+          latest_salaries AS (
+            SELECT emp_no, salary, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM salaries
+          ),
+          latest_titles AS (
+            SELECT emp_no, title, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM titles
+          )
+          SELECT
+            e.emp_no, e.first_name, e.last_name, e.gender::text,
+            e.birth_date::text, e.hire_date::text,
+            d.dept_name as current_department,
+            lt.title as current_title,
+            ls.salary::int as current_salary
+          FROM employees e
+          LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
+          LEFT JOIN departments d ON lde.dept_no = d.dept_no
+          LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
+          LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
+          WHERE (e.first_name ILIKE '%' || ${escapedSearch} || '%' OR e.last_name ILIKE '%' || ${escapedSearch} || '%' OR e.emp_no::text LIKE ${escapedSearch} || '%')
+          ORDER BY ${orderCol} ${orderDir}
+          LIMIT ${size} OFFSET ${offset}
+        `;
+        employees = empResult;
+      } else if (hasDepartment) {
+        const countResult = await prisma.$queryRaw<[{ count: number }]>`
+          SELECT COUNT(*)::int AS count
+          FROM employees e
+          WHERE EXISTS (
+            SELECT 1 FROM dept_emp de 
+            JOIN departments d2 ON d2.dept_no = de.dept_no 
+            WHERE de.emp_no = e.emp_no AND de.to_date = '9999-01-01'::date AND d2.dept_name = ${department}
+          )
+        `;
+        total = countResult[0]?.count || 0;
 
-    const searchParam = escapedSearch || null;
-    const deptParam = department || null;
+        const empResult = await prisma.$queryRaw<{
+          emp_no: number;
+          first_name: string;
+          last_name: string;
+          gender: string;
+          birth_date: string;
+          hire_date: string;
+          current_department: string | null;
+          current_title: string | null;
+          current_salary: number | null;
+        }[]>`
+          WITH latest_dept_emp AS (
+            SELECT emp_no, dept_no, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM dept_emp
+          ),
+          latest_salaries AS (
+            SELECT emp_no, salary, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM salaries
+          ),
+          latest_titles AS (
+            SELECT emp_no, title, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM titles
+          )
+          SELECT
+            e.emp_no, e.first_name, e.last_name, e.gender::text,
+            e.birth_date::text, e.hire_date::text,
+            d.dept_name as current_department,
+            lt.title as current_title,
+            ls.salary::int as current_salary
+          FROM employees e
+          LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
+          LEFT JOIN departments d ON lde.dept_no = d.dept_no
+          LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
+          LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
+          WHERE d.dept_name = ${department}
+          ORDER BY ${orderCol} ${orderDir}
+          LIMIT ${size} OFFSET ${offset}
+        `;
+        employees = empResult;
+      } else {
+        // No filters
+        const countResult = await prisma.$queryRaw<[{ count: number }]>`
+          SELECT COUNT(*)::int AS count FROM employees
+        `;
+        total = countResult[0]?.count || 0;
 
-    const baseParams = [...cursorParams];
-    if (searchParam) baseParams.push(searchParam);
-    if (deptParam) baseParams.push(deptParam);
-
-    const countResult = await prisma.$queryRawUnsafe<[{ count: number }]>(
-      `
-      SELECT COUNT(*)::int AS count
-      FROM employees e
-      WHERE 1=1 ${cursorCondition} ${searchCondition} ${deptExistsCondition}
-    `,
-      ...baseParams
-    );
-
-    const total = countResult[0]?.count || 0;
-
-    const employees = await prisma.$queryRawUnsafe<
-      {
-        emp_no: number;
-        first_name: string;
-        last_name: string;
-        gender: string;
-        birth_date: string;
-        hire_date: string;
-        current_department: string | null;
-        current_title: string | null;
-        current_salary: number | null;
-      }[]
-    >(
-      `
-      WITH latest_dept_emp AS (
-        SELECT emp_no, dept_no, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM dept_emp
-      ),
-      latest_salaries AS (
-        SELECT emp_no, salary, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM salaries
-      ),
-      latest_titles AS (
-        SELECT emp_no, title, from_date,
-               ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
-        FROM titles
-      )
-      SELECT
-        e.emp_no, e.first_name, e.last_name, e.gender::text,
-        e.birth_date::text, e.hire_date::text,
-        d.dept_name as current_department,
-        lt.title as current_title,
-        ls.salary::int as current_salary
-      FROM employees e
-      LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
-      LEFT JOIN departments d ON lde.dept_no = d.dept_no
-      LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
-      LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
-      WHERE 1=1 ${cursorCondition} ${searchCondition} ${deptCondition}
-      ORDER BY ${orderCol} ${orderDir}
-      ${limitClause}
-    `,
-      ...baseParams
-    );
+        const empResult = await prisma.$queryRaw<{
+          emp_no: number;
+          first_name: string;
+          last_name: string;
+          gender: string;
+          birth_date: string;
+          hire_date: string;
+          current_department: string | null;
+          current_title: string | null;
+          current_salary: number | null;
+        }[]>`
+          WITH latest_dept_emp AS (
+            SELECT emp_no, dept_no, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM dept_emp
+          ),
+          latest_salaries AS (
+            SELECT emp_no, salary, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM salaries
+          ),
+          latest_titles AS (
+            SELECT emp_no, title, from_date,
+                   ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
+            FROM titles
+          )
+          SELECT
+            e.emp_no, e.first_name, e.last_name, e.gender::text,
+            e.birth_date::text, e.hire_date::text,
+            d.dept_name as current_department,
+            lt.title as current_title,
+            ls.salary::int as current_salary
+          FROM employees e
+          LEFT JOIN latest_dept_emp lde ON e.emp_no = lde.emp_no AND lde.rn = 1
+          LEFT JOIN departments d ON lde.dept_no = d.dept_no
+          LEFT JOIN latest_salaries ls ON e.emp_no = ls.emp_no AND ls.rn = 1
+          LEFT JOIN latest_titles lt ON e.emp_no = lt.emp_no AND lt.rn = 1
+          ORDER BY ${orderCol} ${orderDir}
+          LIMIT ${size} OFFSET ${offset}
+        `;
+        employees = empResult;
+      }
+    }
 
     const totalPages = Math.max(1, Math.ceil(total / size));
     let nextCursor: string | null = null;
