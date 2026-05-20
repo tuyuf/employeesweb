@@ -3,17 +3,7 @@ import BarChart from '@/components/charts/BarChart';
 import LineChart from '@/components/charts/LineChart';
 import PieChart from '@/components/charts/PieChart';
 import { formatCurrency } from '@/lib/utils';
-
-async function getAnalyticsData() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  try {
-    const res = await fetch(`${appUrl}/api/analytics`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+import { getAnalyticsData } from '@/lib/data/analytics-optimized';
 
 export default async function AnalyticsPage() {
   const data = await getAnalyticsData();

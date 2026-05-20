@@ -4,50 +4,28 @@ import BarChart from '@/components/charts/BarChart';
 import PieChart from '@/components/charts/PieChart';
 import { Users, Building2, TrendingUp } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
-
-async function getAnalyticsData() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  try {
-    const res = await fetch(`${appUrl}/api/analytics`, { cache: 'no-store' });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+import { getCachedAnalyticsData } from '@/lib/data/analytics-optimized';
 
 export default async function DashboardPage() {
-  const data = await getAnalyticsData();
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center h-[400px]">
-        <div className="text-center">
-          <p className="text-lg font-medium">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const data = await getCachedAnalyticsData();
 
   const kpis = data.kpis;
-  const deptData = data.deptDistribution?.map((d: { dept_name: string; count: number }) => ({
+  const deptData = data.deptDistribution.map((d) => ({
     department: d.dept_name,
     employees: d.count,
-  })) || [];
-  const genderData = data.genderDistribution || [];
+  }));
+  const genderData = data.genderDistribution;
   
   // Calculate total for gender percentages
-  const totalGender = genderData.reduce((sum: number, g: { count: number }) => sum + g.count, 0);
-  const maleCount = genderData.find((g: { gender: string }) => g.gender === 'Male')?.count || 0;
-  const femaleCount = genderData.find((g: { gender: string }) => g.gender === 'Female')?.count || 0;
+  const totalGender = genderData.reduce((sum, g) => sum + g.count, 0);
+  const maleCount = genderData.find((g) => g.gender === 'Male')?.count || 0;
+  const femaleCount = genderData.find((g) => g.gender === 'Female')?.count || 0;
   const malePercent = totalGender > 0 ? Math.round((maleCount / totalGender) * 100) : 0;
   const femalePercent = totalGender > 0 ? Math.round((femaleCount / totalGender) * 100) : 0;
 
   // Find largest department
   const largestDept = deptData.length > 0 
-    ? deptData.reduce((max: { department: string; employees: number }, d: { department: string; employees: number }) => 
-      d.employees > max.employees ? d : max
-    )
+    ? deptData.reduce((max, d) => d.employees > max.employees ? d : max)
     : null;
 
   return (

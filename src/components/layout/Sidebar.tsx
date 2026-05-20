@@ -8,6 +8,8 @@ import {
   Building2,
   BarChart3,
   History,
+  FileText,
+  Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +28,8 @@ export default function Sidebar() {
     { href: '/departments', label: 'Departments', icon: Building2 },
     { href: '/analytics', label: 'Analytics', icon: BarChart3 },
     { href: '/history', label: 'History', icon: History },
+    { href: '/reports', label: 'Manager Reports', icon: FileText },
+    { href: '/performance', label: 'Performance Analysis', icon: Zap },
   ];
 
   return (

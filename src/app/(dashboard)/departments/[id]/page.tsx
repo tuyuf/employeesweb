@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { DepartmentDetail, EmployeeListItem, ManagerHistoryItem, PagePagination } from '@/types';
+import { PaginationBar } from '@/components/ui/pagination-bar';
 
 interface EmployeeRow {
   emp_no: number;
@@ -39,8 +40,7 @@ async function getDepartmentData(id: string, page: number = 1): Promise<Departme
 
   if (!department) return null;
 
-  const stats = await prisma.$queryRawUnsafe<[{ employee_count: number; avg_salary: number }]>(
-    `
+  const stats = await prisma.$queryRaw<[{ employee_count: number; avg_salary: number }]>`
     WITH latest_salaries AS (
       SELECT emp_no, salary,
              ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
@@ -51,10 +51,8 @@ async function getDepartmentData(id: string, page: number = 1): Promise<Departme
       COALESCE(AVG(ls.salary)::int, 0) AS avg_salary
     FROM dept_emp de
     LEFT JOIN latest_salaries ls ON ls.emp_no = de.emp_no AND ls.rn = 1
-    WHERE de.dept_no = $1 AND de.to_date = '9999-01-01'::date
-    `,
-    id
-  );
+    WHERE de.dept_no = ${id} AND de.to_date = '9999-01-01'::date
+  `;
 
   const { employee_count, avg_salary } = stats[0];
   const size = 20;
@@ -62,8 +60,7 @@ async function getDepartmentData(id: string, page: number = 1): Promise<Departme
   const currentPage = Math.min(page, totalPages);
   const offset = (currentPage - 1) * size;
 
-  const rows = await prisma.$queryRawUnsafe<EmployeeRow[]>(
-    `
+  const rows = await prisma.$queryRaw<EmployeeRow[]>`
     WITH latest_salaries AS (
       SELECT emp_no, salary,
              ROW_NUMBER() OVER (PARTITION BY emp_no ORDER BY from_date DESC) as rn
@@ -82,13 +79,11 @@ async function getDepartmentData(id: string, page: number = 1): Promise<Departme
     JOIN employees e ON e.emp_no = de.emp_no
     LEFT JOIN latest_salaries ls ON ls.emp_no = e.emp_no AND ls.rn = 1
     LEFT JOIN latest_titles lt ON lt.emp_no = e.emp_no AND lt.rn = 1
-    WHERE de.dept_no = $1 AND de.to_date = '9999-01-01'::date
+    WHERE de.dept_no = ${id} AND de.to_date = '9999-01-01'::date
     ORDER BY e.hire_date ASC, e.emp_no ASC
     OFFSET ${offset}
     LIMIT ${size}
-    `,
-    id
-  );
+  `;
 
   const employees: EmployeeListItem[] = rows.map(r => ({
     emp_no: r.emp_no,
@@ -136,89 +131,6 @@ async function getDepartmentData(id: string, page: number = 1): Promise<Departme
     employees,
     pagination,
   };
-}
-
-function PaginationBar({
-  deptNo,
-  currentPage,
-  totalPages,
-}: {
-  deptNo: string;
-  currentPage: number;
-  totalPages: number;
-}) {
-  if (totalPages <= 1) return null;
-
-  const pages: (number | 'ellipsis')[] = [];
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-  } else {
-    pages.push(1);
-    const start = Math.max(2, currentPage - 1);
-    const end = Math.min(totalPages - 1, currentPage + 1);
-    if (start > 2) pages.push('ellipsis');
-    for (let i = start; i <= end; i++) pages.push(i);
-    if (end < totalPages - 1) pages.push('ellipsis');
-    pages.push(totalPages);
-  }
-
-  return (
-    <div className="flex items-center justify-center gap-1 py-3">
-      {currentPage > 1 ? (
-        <Link
-          href={`/departments/${deptNo}?page=${currentPage - 1}`}
-          className={cn(
-            buttonVariants({ variant: 'outline', size: 'sm' }),
-            "h-8 w-8 p-0 rounded-md border-border"
-          )}
-        >
-          <ChevronLeft size={14} />
-        </Link>
-      ) : (
-        <span className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md text-muted-foreground cursor-not-allowed">
-          <ChevronLeft size={14} />
-        </span>
-      )}
-
-      {pages.map((p, i) =>
-        p === 'ellipsis' ? (
-          <span key={`e${i}`} className="h-8 w-5 inline-flex items-center justify-center text-xs text-muted-foreground">
-            ...
-          </span>
-        ) : (
-          <Link
-            key={p}
-            href={`/departments/${deptNo}?page=${p}`}
-            className={cn(
-              buttonVariants({ variant: p === currentPage ? 'default' : 'outline', size: 'sm' }),
-              "h-8 min-w-8 px-2 rounded-md",
-              p === currentPage
-                ? "bg-foreground text-background hover:bg-foreground/90"
-                : "border-border"
-            )}
-          >
-            <span className="text-xs font-medium">{p}</span>
-          </Link>
-        )
-      )}
-
-      {currentPage < totalPages ? (
-        <Link
-          href={`/departments/${deptNo}?page=${currentPage + 1}`}
-          className={cn(
-            buttonVariants({ variant: 'outline', size: 'sm' }),
-            "h-8 w-8 p-0 rounded-md border-border"
-          )}
-        >
-          <ChevronRight size={14} />
-        </Link>
-      ) : (
-        <span className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-md text-muted-foreground cursor-not-allowed">
-          <ChevronRight size={14} />
-        </span>
-      )}
-    </div>
-  );
 }
 
 export default async function DepartmentDetailPage({
@@ -441,9 +353,9 @@ export default async function DepartmentDetailPage({
 
               <div className="border-t border-border">
                 <PaginationBar
-                  deptNo={department.dept_no}
                   currentPage={page}
                   totalPages={department.pagination.totalPages}
+                  basePath={`/departments/${department.dept_no}`}
                 />
               </div>
             </>

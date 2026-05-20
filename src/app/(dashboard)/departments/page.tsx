@@ -1,20 +1,9 @@
-import { DepartmentSummary } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { Users, DollarSign, UserCog } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
 import Link from 'next/link';
-
-async function getDepartments() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  try {
-    const res = await fetch(`${appUrl}/api/departments`, { cache: 'no-store' });
-    if (!res.ok) return [];
-    return res.json() as Promise<DepartmentSummary[]>;
-  } catch {
-    return [];
-  }
-}
+import { getDepartments } from '@/lib/data/departments';
 
 export default async function DepartmentsPage() {
   const departments = await getDepartments();

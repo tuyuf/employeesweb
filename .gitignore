@@ -35,6 +35,7 @@ yarn-error.log*
 
 # database dump (too large for GitHub)
 employees.sql
+employees-schema.png
 
 # vercel
 .vercel
